@@ -2,93 +2,22 @@ from pygame import *
 import sys
 from os.path import abspath, dirname
 from random import choice
-import cv2
-import numpy as np
-import threading
+from tp1Algorithm import *
 
-# Camera: run capture and GUI in a background thread but keep the same windows/trackbars
+
 _camera_shared = {
     'running': True,
-    'h': 60, 's': 128, 'v': 128,
+    'h': 109, 's': 60, 'v': 139,
     'cx': None, 'cy': None,
     'mask': None,
     'frame_w': 640, 'frame_h': 480,
 }
-
-def on_trackbar_change_H(val):
-    _camera_shared['h'] = val
-
-def on_trackbar_change_S(val):
-    _camera_shared['s'] = val
-
-def on_trackbar_change_V(val):
-    _camera_shared['v'] = val
-
-
-def camera_thread(shared):
-    cap = cv2.VideoCapture(0)
-    cv2.namedWindow("HSV")
-    cv2.createTrackbar("H", "HSV", shared['h'], 179, on_trackbar_change_H)
-    cv2.createTrackbar("S", "HSV", shared['s'], 255, on_trackbar_change_S)
-    cv2.createTrackbar("V", "HSV", shared['v'], 255, on_trackbar_change_V)
-
-    while shared['running']:
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        frame_mirror = frame[:, ::-1, :]
-        try:
-            shared['frame_h'], shared['frame_w'] = frame_mirror.shape[:2]
-        except Exception:
-            pass
-
-        image_HSV = cv2.cvtColor(frame_mirror, cv2.COLOR_BGR2HSV)
-
-        h, s, v = shared['h'], shared['s'], shared['v']
-        lower = np.array([max(0, h - 10), s, max(0, v - 50)])
-        upper = np.array([min(179, h + 10), 255, min(255, v + 50)])
-
-        mask = cv2.inRange(image_HSV, lower, upper)
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        output = frame_mirror.copy()
-        if contours:
-            maior_contorno = max(contours, key=cv2.contourArea)
-            M = cv2.moments(maior_contorno)
-            if M.get("m00", 0) != 0:
-                cx = int(M.get("m10", 0) / M.get("m00", 1))
-                cy = int(M.get("m01", 0) / M.get("m00", 1))
-                shared['cx'], shared['cy'] = cx, cy
-                cv2.circle(output, (cx, cy), 10, (0, 0, 255), -1)
-                cv2.drawContours(output, [maior_contorno], -1, (0, 255, 0), 2)
-            else:
-                shared['cx'], shared['cy'] = None, None
-        else:
-            shared['cx'], shared['cy'] = None, None
-
-        shared['mask'] = mask
-        cv2.imshow("HSV", output)
-        cv2.imshow("Mascara", mask)
-        if cv2.waitKey(1) & 0xFF == 27:
-            # stop on ESC in the OpenCV window
-            shared['running'] = False
-            break
-
-    cap.release()
-    cv2.destroyAllWindows()
-    shared['running'] = False
-
-# start camera thread (daemon so it won't block exit)
 _cam_thread = threading.Thread(target=camera_thread, args=(_camera_shared,), daemon=True)
 _cam_thread.start()
-
-
 #!/usr/bin/env python
 
 # Space Invaders
 # Created by Lee Robinson
-
 
 
 BASE_PATH = abspath(dirname(__file__))
@@ -116,7 +45,7 @@ IMAGES = {name: image.load(IMAGE_PATH + '{}.png'.format(name)).convert_alpha()
           for name in IMG_NAMES}
 
 BLOCKERS_POSITION = 450
-ENEMY_DEFAULT_POSITION = 65  # Initial value for a new game
+ENEMY_DEFAULT_POSITION = 65
 ENEMY_MOVE_DOWN = 35
 
 
@@ -128,19 +57,12 @@ class Ship(sprite.Sprite):
         self.speed = 5
 
     def update(self, keys, *args):
-        if keys[K_LEFT] and self.rect.x > 10:
-            self.rect.x -= self.speed
-        if keys[K_RIGHT] and self.rect.x < 740:
-            self.rect.x += self.speed
-
-        # Camera control: if a colored object is detected, map its x to screen
         cx = _camera_shared.get('cx')
         frame_w = _camera_shared.get('frame_w', 640)
         if cx is not None and frame_w:
             mapped_x = int((cx / float(frame_w)) * 800)
             new_x = mapped_x - (self.rect.width // 2)
             new_x = max(10, min(740, new_x))
-            # smooth movement
             self.rect.x = int(self.rect.x + (new_x - self.rect.x) * 0.4)
 
         game.screen.blit(self.image, self.rect)
@@ -422,8 +344,6 @@ class Text(object):
 
 class SpaceInvaders(object):
     def __init__(self):
-        # It seems, in Linux buffersize=512 is not enough, use 4096 to prevent:
-        #   ALSA lib pcm.c:7963:(snd_pcm_recover) underrun occurred
         mixer.pre_init(44100, -16, 1, 4096)
         init()
         self.clock = time.Clock()
@@ -433,7 +353,6 @@ class SpaceInvaders(object):
         self.startGame = False
         self.mainScreen = True
         self.gameOver = False
-        # Counter for enemy starting position (increased each new round)
         self.enemyPosition = ENEMY_DEFAULT_POSITION
         self.titleText = Text(FONT, 50, 'Space Invaders', WHITE, 164, 155)
         self.titleText2 = Text(FONT, 25, 'Press any key to continue', WHITE,
@@ -452,7 +371,6 @@ class SpaceInvaders(object):
         self.life3 = Life(769, 3)
         self.livesGroup = sprite.Group(self.life1, self.life2, self.life3)
 
-        # timestamp of last camera-initiated shot (ms)
         self.camera_last_shot = 0
 
     def reset(self, score):
@@ -475,7 +393,6 @@ class SpaceInvaders(object):
         self.create_audio()
         self.makeNewShip = False
         self.shipAlive = True
-        # reset camera shot timer when starting/resetting game
         self.camera_last_shot = 0
 
     def make_blockers(self, number):
@@ -546,38 +463,31 @@ class SpaceInvaders(object):
                             self.allSprites.add(self.bullets)
                             self.sounds['shoot2'].play()
 
-        # Camera-based automatic shooting: if detected object is in top third of frame
         currentTime = time.get_ticks()
-        cy = _camera_shared.get('cy')
-        frame_h = _camera_shared.get('frame_h', 480)
-        if cy is not None and frame_h:
-            try:
-                top_third = float(frame_h) / 3.0
-            except Exception:
-                top_third = 160.0
-            if cy <= top_third:
-                # cooldown to avoid continuous firing (500 ms)
-                if currentTime - getattr(self, 'camera_last_shot', 0) > 500:
-                    if len(self.bullets) == 0 and self.shipAlive:
-                        if self.score < 1000:
-                            bullet = Bullet(self.player.rect.x + 23,
+        #alterado Aqui
+        should_shoot_result = should_shoot(_camera_shared.get('cy'))
+        if should_shoot_result:
+            if currentTime - getattr(self, 'camera_last_shot', 0) > 500:
+                if len(self.bullets) == 0 and self.shipAlive:
+                    if self.score < 1000:
+                        bullet = Bullet(self.player.rect.x + 23,
+                                        self.player.rect.y + 5, -1,
+                                        15, 'laser', 'center')
+                        self.bullets.add(bullet)
+                        self.allSprites.add(self.bullets)
+                        self.sounds['shoot'].play()
+                    else:
+                        leftbullet = Bullet(self.player.rect.x + 8,
                                             self.player.rect.y + 5, -1,
-                                            15, 'laser', 'center')
-                            self.bullets.add(bullet)
-                            self.allSprites.add(self.bullets)
-                            self.sounds['shoot'].play()
-                        else:
-                            leftbullet = Bullet(self.player.rect.x + 8,
-                                                self.player.rect.y + 5, -1,
-                                                15, 'laser', 'left')
-                            rightbullet = Bullet(self.player.rect.x + 38,
-                                                 self.player.rect.y + 5, -1,
-                                                 15, 'laser', 'right')
-                            self.bullets.add(leftbullet)
-                            self.bullets.add(rightbullet)
-                            self.allSprites.add(self.bullets)
-                            self.sounds['shoot2'].play()
-                        self.camera_last_shot = currentTime
+                                            15, 'laser', 'left')
+                        rightbullet = Bullet(self.player.rect.x + 38,
+                                             self.player.rect.y + 5, -1,
+                                             15, 'laser', 'right')
+                        self.bullets.add(leftbullet)
+                        self.bullets.add(rightbullet)
+                        self.allSprites.add(self.bullets)
+                        self.sounds['shoot2'].play()
+                    self.camera_last_shot = currentTime
 
     def make_enemies(self):
         enemies = EnemiesGroup(10, 5)
@@ -715,7 +625,6 @@ class SpaceInvaders(object):
                     if self.should_exit(e):
                         sys.exit()
                     if e.type == KEYUP:
-                        # Only create blockers on a new game, not a new round
                         self.allBlockers = sprite.Group(self.make_blockers(0),
                                                         self.make_blockers(1),
                                                         self.make_blockers(2),

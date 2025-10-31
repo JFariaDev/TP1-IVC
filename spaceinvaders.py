@@ -1,8 +1,14 @@
 from pygame import *
-import sys
-from os.path import abspath, dirname
+import sys, os, threading
 from random import choice
 from tp1Algorithm import *
+
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 
 _camera_shared = {
@@ -20,10 +26,11 @@ _cam_thread.start()
 # Created by Lee Robinson
 
 
-BASE_PATH = abspath(dirname(__file__))
-FONT_PATH = BASE_PATH + '/fonts/'
-IMAGE_PATH = BASE_PATH + '/images/'
-SOUND_PATH = BASE_PATH + '/sounds/'
+FONT_PATH = resource_path('fonts/')
+IMAGE_PATH = resource_path('images/')
+SOUND_PATH = resource_path('sounds/')
+
+
 
 # Colors (R, G, B)
 WHITE = (255, 255, 255)
